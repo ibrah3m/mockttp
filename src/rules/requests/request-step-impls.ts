@@ -4,6 +4,7 @@ import url = require('url');
 import net = require('net');
 import http = require('http');
 import https = require('https');
+import tls = require('tls');
 
 import * as _ from 'lodash';
 import * as fs from 'fs/promises';
@@ -18,7 +19,8 @@ import {
     Headers,
     OngoingRequest,
     CompletedRequest,
-    OngoingResponse
+    OngoingResponse,
+    TlsKeylogEvent
 } from "../../types";
 
 import { MaybePromise, ErrorLike, isErrorLike, delay } from '@httptoolkit/util';
@@ -743,6 +745,29 @@ export class PassThroughStepImpl extends PassThroughStep {
                     trustedCAs
                 })
             }, (serverRes) => (async () => {
+                // Add keylog event handling for upstream TLS connections
+                if (protocol === 'https:' && serverReq.socket && 'encrypted' in serverReq.socket && serverReq.socket.encrypted) {
+                    const tlsSocket = serverReq.socket as tls.TLSSocket;
+                    if (options.emitEventCallback) {
+                        tlsSocket.on('keylog', (keylogLine: Buffer, tlsSocket: tls.TLSSocket) => {
+                            const keylogEvent: TlsKeylogEvent = {
+                                connectionType: 'upstream',
+                                keylogLine: keylogLine.toString(),
+                                tlsSocket,
+                                metadata: {
+                                    hostname: effectiveHostname,
+                                    port: effectivePort,
+                                    servername: tlsSocket.servername || hostname,
+                                    alpnProtocol: tlsSocket.alpnProtocol || undefined,
+                                    authorized: tlsSocket.authorized,
+                                    authorizationError: tlsSocket.authorizationError || undefined
+                                },
+                                timestamp: Date.now()
+                            };
+                            options.emitEventCallback('tls-keylog', keylogEvent);
+                        });
+                    }
+                }
                 serverRes.on('error', (e: any) => {
                     reportUpstreamAbort(e)
                     reject(e);

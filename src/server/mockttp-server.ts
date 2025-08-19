@@ -33,7 +33,8 @@ import {
     RawTrailers,
     RawPassthroughEvent,
     RawPassthroughDataEvent,
-    RawHeaders
+    RawHeaders,
+    TlsKeylogEvent
 } from "../types";
 import { DestroyableServer } from "destroyable-server";
 import {
@@ -92,6 +93,7 @@ import {
 import { AbortError } from "../rules/requests/request-step-impls";
 import { WebSocketRuleData, WebSocketRule } from "../rules/websockets/websocket-rule";
 import { SocksServerOptions } from "./socks-server";
+import { globalKeylogWriter } from "../util/keylog-writer";
 
 type ExtendedRawRequest = (http.IncomingMessage | http2.Http2ServerRequest) & {
     protocol?: string;
@@ -138,6 +140,15 @@ export class MockttpServer extends AbstractMockttp implements Mockttp {
         this.passthroughUnknownProtocols = options.passthrough?.includes('unknown-protocol') ?? false;
         this.maxBodySize = options.maxBodySize ?? Infinity;
         this.eventEmitter = new EventEmitter();
+
+        // Set up keylog file writing if configured
+        if (this.httpsOptions?.sslKeylog) {
+            const { incomingKeylogFile, upstreamKeylogFile } = this.httpsOptions.sslKeylog;
+            
+            this.on('tls-keylog', (event: TlsKeylogEvent) => {
+                globalKeylogWriter.writeKeylogEvent(event, incomingKeylogFile, upstreamKeylogFile);
+            });
+        }
 
         this.app = connect();
 
@@ -336,6 +347,7 @@ export class MockttpServer extends AbstractMockttp implements Mockttp {
     public on(event: 'tls-passthrough-opened', callback: (req: TlsPassthroughEvent) => void): Promise<void>;
     public on(event: 'tls-passthrough-closed', callback: (req: TlsPassthroughEvent) => void): Promise<void>;
     public on(event: 'tls-client-error', callback: (req: TlsHandshakeFailure) => void): Promise<void>;
+    public on(event: 'tls-keylog', callback: (event: TlsKeylogEvent) => void): Promise<void>;
     public on(event: 'client-error', callback: (error: ClientError) => void): Promise<void>;
     public on(event: 'raw-passthrough-opened', callback: (req: RawPassthroughEvent) => void): Promise<void>;
     public on(event: 'raw-passthrough-closed', callback: (req: RawPassthroughEvent) => void): Promise<void>;

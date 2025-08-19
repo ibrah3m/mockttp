@@ -22,7 +22,8 @@ import {
     AbortedRequest,
     RuleEvent,
     RawPassthroughEvent,
-    RawPassthroughDataEvent
+    RawPassthroughDataEvent,
+    TlsKeylogEvent
 } from "./types";
 import type { RequestRuleData } from "./rules/requests/request-rule";
 import type { WebSocketRuleData } from "./rules/websockets/websocket-rule";
@@ -527,6 +528,25 @@ export interface Mockttp {
     on(event: 'tls-client-error', callback: (req: TlsHandshakeFailure) => void): Promise<void>;
 
     /**
+     * Subscribe to hear about TLS keylog events from both incoming and upstream TLS connections.
+     * This provides access to TLS key material that can be used with tools like Wireshark
+     * to decrypt TLS traffic for debugging purposes.
+     *
+     * The keylog data follows the NSS Key Log format and includes the connection type
+     * (incoming or upstream), metadata about the TLS connection, and the raw keylog line.
+     *
+     * This is only useful in some niche use cases, such as debugging TLS connections
+     * or analyzing encrypted traffic.
+     *
+     * The callback will be called asynchronously from connection handling. This function
+     * returns a promise, and the callback is not guaranteed to be registered until
+     * the promise is resolved.
+     *
+     * @category Events
+     */
+    on(event: 'tls-keylog', callback: (event: TlsKeylogEvent) => void): Promise<void>;
+
+    /**
      * Subscribe to hear about requests that fail before successfully sending their
      * initial parameters (the request line & headers). This will fire for requests
      * that drop connections early, send invalid or too-long headers, or aren't
@@ -771,6 +791,26 @@ export type MockttpHttpsOptions = CAOptions & {
     tlsServerOptions?: {
         minVersion?: 'TLSv1.3' | 'TLSv1.2' | 'TLSv1.1' | 'TLSv1';
     };
+
+    /**
+     * SSL keylog configuration for debugging TLS connections.
+     * 
+     * This enables capturing TLS key material in NSS Key Log Format,
+     * which can be used with tools like Wireshark to decrypt TLS traffic.
+     */
+    sslKeylog?: {
+        /**
+         * File path to write keylog data for incoming TLS connections
+         * (clients connecting to Mockttp).
+         */
+        incomingKeylogFile?: string;
+        
+        /**
+         * File path to write keylog data for upstream TLS connections
+         * (Mockttp connecting to remote servers).
+         */
+        upstreamKeylogFile?: string;
+    };
 };
 
 export interface MockttpOptions {
@@ -895,6 +935,7 @@ export type SubscribableEvent =
     | 'tls-passthrough-opened'
     | 'tls-passthrough-closed'
     | 'tls-client-error'
+    | 'tls-keylog'
     | 'client-error'
     | 'raw-passthrough-opened'
     | 'raw-passthrough-closed'

@@ -131,6 +131,53 @@ How to trust this certificate will depend on your HTTP client & test setup. You 
 
 (Need to trust your cert in .crt form? Try `openssl x509 -outform der -in your-cert.pem -out your-cert.crt` to convert it from pem)
 
+## SSL Keylog for TLS Debugging
+
+Mockttp supports capturing TLS key material in NSS Key Log format, which can be used with tools like Wireshark to decrypt and analyze TLS traffic for debugging purposes.
+
+### Configuring SSL Keylog
+
+You can enable keylog capture by adding the `sslKeylog` configuration to your HTTPS options:
+
+```javascript
+const mockServer = getLocal({
+    https: {
+        keyPath: './testCA.key',
+        certPath: './testCA.pem',
+        sslKeylog: {
+            // Capture keylog data for incoming TLS connections (clients -> Mockttp)
+            incomingKeylogFile: './incoming-keys.log',
+            // Capture keylog data for upstream TLS connections (Mockttp -> servers)
+            upstreamKeylogFile: './upstream-keys.log'
+        }
+    }
+});
+```
+
+### Using Keylog Data with Wireshark
+
+1. Configure Mockttp with keylog files as shown above
+2. Run your tests or proxy traffic through Mockttp
+3. In Wireshark, go to Edit → Preferences → Protocols → TLS
+4. Set the "(Pre)-Master-Secret log filename" to point to your keylog file
+5. Capture or load your TLS traffic - Wireshark will now decrypt it automatically
+
+### Subscribing to Keylog Events
+
+You can also subscribe to keylog events programmatically:
+
+```javascript
+await mockServer.on('tls-keylog', (event) => {
+    console.log(`Keylog for ${event.connectionType} connection:`);
+    console.log(`From ${event.remoteAddress}:${event.remotePort} to ${event.localAddress}:${event.localPort}`);
+    console.log(`Keylog line: ${event.keylogLine}`);
+});
+```
+
+The `connectionType` will be either `'incoming'` (for client connections to Mockttp) or `'upstream'` (for Mockttp connections to remote servers).
+
+**Security Note**: Keylog files contain sensitive cryptographic material that can be used to decrypt TLS traffic. Only use this feature in testing environments and ensure keylog files are properly secured and cleaned up after use.
+
 ### HTTPS Setup Example
 
 As a full example, take a look at Mockttp's own test configuration. The Mockttp test certificate was generated using the commands above, and is stored in [test/fixtures](https://github.com/httptoolkit/mockttp/tree/a6c8e155/test/fixtures). It's configured in the mock server in the [https](https://github.com/httptoolkit/mockttp/blob/a6c8e155/test/integration/https.spec.ts) and [proxy](https://github.com/httptoolkit/mockttp/blob/a6c8e155/test/integration/proxy.spec.ts) tests, and marked as trusted in Node ([in package.json](https://github.com/httptoolkit/mockttp/blob/a6c8e155/package.json#L38)) and Chrome ([in the Karma config](https://github.com/httptoolkit/mockttp/blob/a6c8e155/karma.conf.js#L77)).

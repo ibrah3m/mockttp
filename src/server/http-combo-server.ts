@@ -17,7 +17,7 @@ import {
 } from 'read-tls-client-hello';
 import { URLPattern } from "urlpattern-polyfill";
 
-import { Destination, TlsHandshakeFailure } from '../types';
+import { Destination, TlsHandshakeFailure, TlsKeylogEvent } from '../types';
 import { getCA } from '../util/certificates';
 import { shouldPassThrough } from '../util/server-utils';
 import { getDestination } from '../util/url';
@@ -156,6 +156,7 @@ export interface ComboServerOptions {
     tlsClientErrorListener: (socket: tls.TLSSocket, req: TlsHandshakeFailure) => void;
     tlsPassthroughListener: (socket: net.Socket, hostname: string, port?: number) => void;
     rawPassthroughListener: (socket: net.Socket, hostname: string, port?: number) => void;
+    tlsKeylogListener?: (keylogEvent: TlsKeylogEvent) => void;
 };
 
 // The low-level server that handles all the sockets & TLS. The server will correctly call the
@@ -219,6 +220,20 @@ export async function createComboServer(options: ComboServerOptions): Promise<De
                 }
             }
         });
+
+        // Add keylog event listener for incoming TLS connections if configured
+        if (options.tlsKeylogListener) {
+            tlsServer.on('keylog', (keylogLine: Buffer, tlsSocket: tls.TLSSocket) => {
+                const keylogEvent: TlsKeylogEvent = {
+                    keylogLine: keylogLine.toString('ascii'),
+                    connectionType: 'incoming',
+                    connectionMetadata: buildTlsSocketEventData(tlsSocket),
+                    eventTimestamp: now(),
+                    tags: []
+                };
+                options.tlsKeylogListener!(keylogEvent);
+            });
+        }
 
         analyzeAndMaybePassThroughTls(
             tlsServer,

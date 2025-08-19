@@ -115,6 +115,36 @@ export interface TlsHandshakeFailure extends TlsConnectionEvent {
     timingEvents: TlsFailureTimingEvents;
 }
 
+export interface TlsKeylogEvent {
+    /**
+     * The keylog line in NSS Key Log Format
+     * Format: <Label> <space> <ClientRandom> <space> <Secret>
+     */
+    keylogLine: string;
+    
+    /**
+     * The type of connection this keylog is for
+     */
+    connectionType: 'incoming' | 'upstream';
+    
+    /**
+     * Connection metadata
+     */
+    remoteIpAddress?: string;
+    remotePort?: number;
+    destination?: Destination;
+    
+    /**
+     * High-precision timestamp when the keylog was generated
+     */
+    eventTimestamp: number;
+    
+    /**
+     * Tags associated with this connection
+     */
+    tags: string[];
+}
+
 export interface RawPassthroughEvent {
     id: string;
 
